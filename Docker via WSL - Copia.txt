@@ -1,0 +1,11 @@
+ir até o caminho do arquivo: cd /mnt/c/Users/FERNANDO/Example/example
+
+
+Primeira vez:
+
+Iniciar o docker: sudo service docker start
+
+
+	Build se necessario: docker-compose -f docker-compose.dev.yml build
+
+Iniciar Server: docker-compose -f docker-compose.dev.yml up
