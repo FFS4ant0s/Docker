@@ -1,0 +1,88 @@
+# Comandos para importar dados
+import_companies:
+	docker exec -ti django_dev python manage.py import_data --companies companies.csv
+
+import_complaints:
+	docker exec -ti django_dev python manage.py import_data --complaints complaints.csv
+
+# Construção do ambiente
+build:
+ifeq ("$(wildcard .env.dev)","")
+	cp .env.dev-example .env.dev
+	@echo "##### Novo arquivo .env.dev criado"
+endif
+	docker-compose -f docker-compose-dev.yaml --env-file=.env.dev up -d --build
+	@echo "##### Esperando o banco de dados ficar pronto..."
+	until docker exec -ti postgres_dev pg_isready -h db -p 5432 -U postgres; do sleep 1; done
+	@echo "##### Banco de dados pronto!"
+	docker exec -ti postgres_dev psql -U postgres -c "ALTER USER postgres CREATEDB;"
+	docker exec -ti postgres_dev psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'test_postgres'" | grep -q 1 || docker exec -ti postgres_dev psql -U postgres -c "CREATE DATABASE test_postgres;"
+	docker exec -ti django_dev python manage.py makemigrations
+	docker exec -ti django_dev python manage.py migrate
+	@echo "##### Configuração finalizada!"
+
+# Comandos Django
+makemigrations:
+	docker exec -ti django_dev python manage.py makemigrations
+
+migrate:
+	docker exec -ti django_dev python manage.py migrate
+
+createsuperuser:
+	docker exec -ti django_dev python manage.py createsuperuser
+
+collectstatic:
+	docker exec -ti django_dev python manage.py collectstatic --noinput
+
+shell:
+	docker exec -ti django_dev python manage.py shell
+
+# Inicialização e parada dos containers
+start:
+	docker-compose -f docker-compose-dev.yaml start
+	docker exec -ti django_dev wait-for-it db_api_wl:5432 --timeout=30 -- echo "Banco de dados pronto!"
+	docker exec -ti django_dev python manage.py runserver 0.0.0.0:8000
+
+stop:
+	docker-compose -f docker-compose-dev.yaml stop
+
+# Testes e cobertura de código
+test:
+	docker exec -ti django_dev pytest .
+
+coverage:
+	docker exec -ti django_dev coverage run manage.py test
+	docker exec -ti django_dev coverage report
+
+# Linter e formatação do código
+lint:
+	@echo "\n########## Organizando e verificando código ###########\n"
+	@echo "############################### Running isort ###################################\n"
+	docker exec -ti django_dev isort .
+	docker exec -ti -u root django_dev chown -R app:app /app
+	@echo "\n################################# Running black #################################\n"
+	docker exec -ti django_dev black .
+	docker exec -ti -u root django_dev chown -R app:app /app
+	@echo "\n################################ Running flake8. ################################\n"
+	docker exec -ti django_dev flake8 .
+	docker exec -ti -u root django_dev chown -R app:app /app
+
+pre:
+	make lint
+	make test
+
+# Formatação individual
+isort:
+	docker exec -ti django_dev isort .
+	docker exec -ti -u root django_dev chown -R app:app /app
+
+black:
+	docker exec -ti django_dev black .
+	docker exec -ti -u root django_dev chown -R app:app /app
+
+flake8:
+	docker exec -ti django_dev flake8 .
+	docker exec -ti -u root django_dev chown -R app:app /app
+
+populate:
+	docker exec -ti django_dev python manage.py populate_db
